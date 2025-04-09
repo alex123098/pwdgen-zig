@@ -1,6 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const GREEN = "\x1b[32m";
+const RED = "\x1b[31m";
+const RESET = "\x1b[0m";
+
 pub fn main() !void {
     const out = std.io.getStdOut().writer();
 
@@ -18,9 +22,9 @@ pub fn main() !void {
         };
 
         f.func() catch |err| {
-            try out.print("{s} failed: {}\n", .{ name, err });
+            try out.print("{s}[-]{s} {s}: {s}failed: {}{s}\n", .{ RED, RESET, name, RED, err, RESET });
             continue;
         };
-        try out.print(" {s} passed\n", .{name});
+        try out.print("{s}[+]{s} {s}: {s}passed{s}\n", .{ GREEN, RESET, name, GREEN, RESET });
     }
 }

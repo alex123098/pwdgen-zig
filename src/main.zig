@@ -77,7 +77,7 @@ fn parseRequest(allocator: std.mem.Allocator) !?Request {
     return req;
 }
 
-test {
+test "references" {
     const r = Request{
         .verbose = false,
         .length = 12,

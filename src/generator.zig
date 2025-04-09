@@ -3,6 +3,14 @@ const symbols = @import("symbols.zig");
 const Request = @import("request.zig");
 
 pub fn generateNoWordlist(req: Request, allocator: std.mem.Allocator) ![]const u8 {
+    if (req.verbose) {
+        std.log.debug("> length: {}, disable numbers: {}, disable symbols: {}, disable uppercase letters: {}\n", .{
+            req.length,
+            req.no_numbers,
+            req.no_special_symb,
+            req.no_upper,
+        });
+    }
     const alphabet = try req.alphabet(allocator);
     defer allocator.free(alphabet);
 
@@ -19,13 +27,22 @@ pub fn generateNoWordlist(req: Request, allocator: std.mem.Allocator) ![]const u
 }
 
 pub fn generateWordlist(req: Request, wordlist_path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    if (req.verbose) {
+        std.log.debug("> length: {}, disable numbers: {}, disable symbols: {}, disable uppercase letters: {}\n", .{
+            req.length,
+            req.no_numbers,
+            req.no_special_symb,
+            req.no_upper,
+        });
+        std.log.debug("> wordlist path: {s}\n", .{wordlist_path});
+    }
     const st1_seed: u64 = @bitCast(std.time.milliTimestamp());
     var rng = std.Random.DefaultPrng.init(st1_seed);
     const rnd = rng.random();
     const word_idx = rnd.uintLessThan(u64, std.math.maxInt(u64));
-    std.debug.print("> generated word_idx: {}\n", .{word_idx});
+    if (req.verbose) std.log.debug("> generated word_idx: {}\n", .{word_idx});
 
-    const word = try pickWord(wordlist_path, word_idx, allocator);
+    const word = try pickWord(wordlist_path, word_idx, req.verbose, allocator);
     defer allocator.free(word);
 
     return try mangleWord(word, req, rnd, allocator);
@@ -35,11 +52,9 @@ fn mangleWord(word: []const u8, req: Request, rnd: std.Random, allocator: std.me
     var res = try allocator.alloc(u8, req.length);
     errdefer allocator.free(res);
 
-    const alphabet = try req.alphabet(allocator);
-    defer allocator.free(alphabet);
-
     if (word.len >= req.length) {
         @memcpy(res, word[0..req.length]);
+        if (req.verbose) std.log.debug("> picked word is too long and will be truncated\n", .{});
         replaceSymbols(res, req, rnd);
         return res;
     }
@@ -47,6 +62,13 @@ fn mangleWord(word: []const u8, req: Request, rnd: std.Random, allocator: std.me
     const len_diff = req.length - word.len;
     const pfx_len = len_diff / 2;
     const sfx_len = len_diff - pfx_len;
+    if (req.verbose) std.log.debug("> generated prefix length: {}, generated suffix length: {}\n", .{
+        pfx_len,
+        sfx_len,
+    });
+
+    const alphabet = try req.alphabet(allocator);
+    defer allocator.free(alphabet);
 
     for (0..pfx_len) |i| {
         const idx = rnd.uintLessThan(usize, alphabet.len);
@@ -72,12 +94,22 @@ fn replaceSymbols(str: []u8, req: Request, rnd: std.Random) void {
     }
 }
 
-fn pickWord(wordlist_path: []const u8, word_idx: u64, allocator: std.mem.Allocator) ![]const u8 {
+fn pickWord(wordlist_path: []const u8, word_idx: u64, verbose: bool, allocator: std.mem.Allocator) ![]const u8 {
+    if (verbose) {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        const alloc = arena.allocator();
+        std.log.debug("> cwd path: {s}\n", .{
+            try std.fs.cwd().realpathAlloc(alloc, "."),
+        });
+    }
+
     const file = try std.fs.cwd().openFile(wordlist_path, .{});
     defer file.close();
     var idx = word_idx + 1;
 
-    const buf = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    const buf = try file.readToEndAlloc(allocator, 500_000_000);
     defer allocator.free(buf);
 
     while (true) {
@@ -89,22 +121,22 @@ fn pickWord(wordlist_path: []const u8, word_idx: u64, allocator: std.mem.Allocat
             if (idx == words_count) {
                 const res = try allocator.alloc(u8, w.len);
                 @memcpy(res, w);
-                std.debug.print("> picked word: {s}\n", .{w});
+                if (verbose) std.log.debug("> picked word: {s}\n", .{w});
                 return res;
             }
         }
 
         idx = idx % words_count;
-        std.debug.print("> word_idx adjusted to {}\n", .{idx});
+        if (verbose) std.log.debug("> word_idx adjusted to {}\n", .{idx});
     }
 }
 
-test "Can pick a word from a list" {
+test "can pick a word from a list" {
     const idx: u64 = 14344392;
-    const path = "/usr/share/wordlists/seclists/Passwords/Leaked-Databases/rockyou.txt";
+    const path = "test_wordlist.txt";
 
-    const word = try pickWord(path, idx, std.testing.allocator);
+    const word = try pickWord(path, idx, false, std.testing.allocator);
     defer std.testing.allocator.free(word);
 
-    try std.testing.expectEqualStrings("123456", word);
+    try std.testing.expectEqualStrings("1234567", word);
 }

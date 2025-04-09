@@ -37,6 +37,9 @@ pub fn alphabet(self: Self, allocator: std.mem.Allocator) ![]const u8 {
         @memcpy(res[offset .. offset + symbols.uppercase.len], symbols.uppercase);
         offset += symbols.uppercase.len;
     }
+    if (self.verbose) {
+        std.log.debug("> generated alphabet: {s}\n", .{res});
+    }
 
     return res;
 }
