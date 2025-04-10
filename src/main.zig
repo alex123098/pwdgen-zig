@@ -3,6 +3,7 @@ const clap = @import("clap");
 const Request = @import("request.zig");
 const symbols = @import("symbols.zig");
 const generator = @import("generator.zig");
+const Printer = @import("printer.zig");
 
 const DEFAULT_LENGTH = 12;
 
@@ -20,20 +21,21 @@ pub fn main() !void {
         }
     }
 
-    const res = generate(req, allocator) catch |err| {
-        try std.io.getStdErr().writer().print("{any}\n", .{err});
+    const printer = Printer.init();
+    const res = generate(req, printer, allocator) catch |err| {
+        printer.err("{any}\n", .{err});
         return err;
     };
 
-    try std.io.getStdOut().writer().print("{s}\n", .{res});
+    printer.out("{s}\n", .{res});
     allocator.free(res);
 }
 
-fn generate(req: Request, allocator: std.mem.Allocator) ![]const u8 {
+fn generate(req: Request, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
     return if (req.wordlist_path) |wl|
-        generator.generateWordlist(req, wl, allocator)
+        generator.generateWordlist(req, wl, printer, allocator)
     else
-        generator.generateNoWordlist(req, allocator);
+        generator.generateNoWordlist(req, printer, allocator);
 }
 
 fn parseRequest(allocator: std.mem.Allocator) !?Request {
@@ -86,5 +88,5 @@ test "references" {
         .no_special_symb = false,
         .no_upper = false,
     };
-    _ = try generator.generateNoWordlist(r, std.testing.allocator);
+    _ = try generator.generateNoWordlist(r, Printer.init(), std.testing.allocator);
 }
