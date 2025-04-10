@@ -30,12 +30,12 @@ The project was written in Zig 0.15.0. Make sure you have this version installed
 ```bash
 
 # To build the executable stored in the `zig-out/bin` folder
-> zig build install --release
+> zig build install --release=fast
 
 # To build the executable stored in the custom path <path>/bin:
-> zig build install --release -p <path>
+> zig build install --release=fast -p <path>
 
 # To build the executable stored in the custom path <path>:
-> zig build install --release -p <path> --prefix-exe-dir <path>
+> zig build install --release=fast -p <path> --prefix-exe-dir <path>
 
 ```
