@@ -5,8 +5,9 @@ const GREEN = "\x1b[32m";
 const RED = "\x1b[31m";
 const RESET = "\x1b[0m";
 
-pub fn main() !void {
-    const out = std.io.getStdOut().writer();
+pub fn main(init: std.process.Init) !void {
+    var std_writer = std.Io.File.stdout().writer(init.io, &.{});
+    var out = &std_writer.interface;
 
     for (builtin.test_functions) |f| {
         const name = blk: {

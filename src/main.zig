@@ -2,17 +2,14 @@ const std = @import("std");
 const clap = @import("clap");
 const Request = @import("request.zig");
 const symbols = @import("symbols.zig");
-const generator = @import("generator.zig");
+const Generator = @import("generator.zig");
 const Printer = @import("printer.zig");
 
 const DEFAULT_LENGTH = 12;
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    var allocator = gpa.allocator();
-    const req = try parseRequest(allocator) orelse {
+pub fn main(init: std.process.Init) !void {
+    var allocator = init.gpa;
+    const req = try parseRequest(init) orelse {
         std.process.exit(0);
     };
     defer {
@@ -21,8 +18,14 @@ pub fn main() !void {
         }
     }
 
-    const printer = Printer.init();
-    const res = generate(req, printer, allocator) catch |err| {
+    var stdout_f = std.Io.File.stdout().writer(init.io, &.{});
+    const stdout = &stdout_f.interface;
+    var stderr_f = std.Io.File.stderr().writer(init.io, &.{});
+    const stderr = &stderr_f.interface;
+
+    const printer = Printer.init(stdout, stderr, req.verbose);
+    const generator = Generator.init(init.io, allocator);
+    const res = generate(req, printer, generator) catch |err| {
         printer.err("{any}\n", .{err});
         return err;
     };
@@ -31,14 +34,14 @@ pub fn main() !void {
     allocator.free(res);
 }
 
-fn generate(req: Request, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
+fn generate(req: Request, printer: Printer, generator: Generator) ![]const u8 {
     return if (req.wordlist_path) |wl|
-        generator.generateWordlist(req, wl, printer, allocator)
+        generator.generateWordlist(req, wl, printer)
     else
-        generator.generateNoWordlist(req, printer, allocator);
+        generator.generateNoWordlist(req, printer);
 }
 
-fn parseRequest(allocator: std.mem.Allocator) !?Request {
+fn parseRequest(init: std.process.Init) !?Request {
     const params_def = comptime clap.parseParamsComptime(
         \\-v, --verbose             Output extra information
         \\-h, --help                Show this help message
@@ -54,12 +57,14 @@ fn parseRequest(allocator: std.mem.Allocator) !?Request {
         .PATH = clap.parsers.string,
     };
 
-    var res = try clap.parse(clap.Help, &params_def, parsers, .{
+    var allocator = init.gpa;
+
+    var res = try clap.parse(clap.Help, &params_def, parsers, init.minimal.args, .{
         .allocator = allocator,
     });
     defer res.deinit();
     if (res.args.help != 0) {
-        try clap.help(std.io.getStdOut().writer(), clap.Help, &params_def, .{});
+        try clap.helpToFile(init.io, .stderr(), clap.Help, &params_def, .{});
         return null;
     }
 
@@ -88,5 +93,8 @@ test "references" {
         .no_special_symb = false,
         .no_upper = false,
     };
-    _ = try generator.generateNoWordlist(r, Printer.init(), std.testing.allocator);
+    const testing = std.testing;
+    const generator = Generator.init(testing.io, testing.allocator);
+    const list = try generator.generateNoWordlist(r, Printer.init(testing.io, false));
+    testing.allocator.free(list);
 }

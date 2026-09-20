@@ -11,7 +11,7 @@ no_special_symb: bool,
 no_numbers: bool,
 no_upper: bool,
 
-pub fn alphabet(self: Self, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
+pub fn alphabet(self: Self, allocator: std.mem.Allocator) ![]const u8 {
     var total_len = symbols.all.len;
     if (self.no_special_symb) {
         total_len -= symbols.special.len;
@@ -38,9 +38,6 @@ pub fn alphabet(self: Self, printer: Printer, allocator: std.mem.Allocator) ![]c
         @memcpy(res[offset .. offset + symbols.uppercase.len], symbols.uppercase);
         offset += symbols.uppercase.len;
     }
-    if (self.verbose) {
-        printer.detail("> generated alphabet: {s}\n", .{res});
-    }
 
     return res;
 }
@@ -54,8 +51,9 @@ test "correct alphabet for all symbols" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.all;
@@ -71,8 +69,9 @@ test "correct alphabet without special symbols" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase ++ symbols.numbers ++ symbols.uppercase;
@@ -88,8 +87,9 @@ test "correct alphabet without numbers" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase ++ symbols.special ++ symbols.uppercase;
@@ -105,8 +105,9 @@ test "correct alphabet without uppercase" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase ++ symbols.special ++ symbols.numbers;
@@ -122,8 +123,9 @@ test "correct alphabet without special symbols and numbers" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase ++ symbols.uppercase;
@@ -139,8 +141,9 @@ test "correct alphabet without special symbols and uppercase" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase ++ symbols.numbers;
@@ -156,8 +159,9 @@ test "correct alphabet without numbers and uppercase" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase ++ symbols.special;
@@ -173,10 +177,12 @@ test "correct alphabet without special symbols, numbers and uppercase" {
         .wordlist_path = null,
         .verbose = false,
     };
+    const testing = std.testing;
 
-    const alpha = try r.alphabet(Printer.init(), std.testing.allocator);
+    const alpha = try r.alphabet(testing.allocator);
     defer std.testing.allocator.free(alpha);
 
     const expected = symbols.lowercase;
     try std.testing.expectEqualStrings(expected, alpha);
 }
+

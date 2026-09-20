@@ -7,17 +7,21 @@ const RESET_COLOR = "\x1b[0m";
 
 const Self = @This();
 
-main_out: std.fs.File.Writer,
-error_out: std.fs.File.Writer,
+main_out: *std.Io.Writer,
+error_out: *std.Io.Writer,
+verbose: bool,
 
-pub fn init() Self {
+pub fn init(main_out: *std.Io.Writer, error_out: *std.Io.Writer, verbose: bool) Self {
     return .{
-        .main_out = std.io.getStdOut().writer(),
-        .error_out = std.io.getStdErr().writer(),
+        .main_out = main_out,
+        .error_out = error_out,
+        .verbose = verbose,
     };
 }
 
 pub fn detail(self: Self, comptime format: []const u8, args: anytype) void {
+    if (!self.verbose) return;
+
     self.error_out.writeAll(DETAILS_COLOR) catch unreachable;
     self.error_out.print(format, args) catch unreachable;
     self.error_out.writeAll(RESET_COLOR) catch unreachable;

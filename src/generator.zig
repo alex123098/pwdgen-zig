@@ -2,23 +2,36 @@ const std = @import("std");
 const symbols = @import("symbols.zig");
 const Request = @import("request.zig");
 const Printer = @import("printer.zig");
+const Self = @This();
 
-pub fn generateNoWordlist(req: Request, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
-    if (req.verbose) {
-        printer.detail("> length: {}, disable numbers: {}, disable symbols: {}, disable uppercase letters: {}\n", .{
-            req.length,
-            req.no_numbers,
-            req.no_special_symb,
-            req.no_upper,
-        });
-    }
-    const alphabet = try req.alphabet(printer, allocator);
-    defer allocator.free(alphabet);
+allocator: std.mem.Allocator,
+io: std.Io,
+seed: u64,
 
-    const st1_seed: u64 = @bitCast(std.time.milliTimestamp());
-    var rng = std.Random.DefaultPrng.init(st1_seed);
+pub fn init(io: std.Io, allocator: std.mem.Allocator) Self {
+    const ts = std.Io.Timestamp.now(io, .real);
+    return .{
+        .allocator = allocator,
+        .io = io,
+        .seed = @bitCast(ts.toMilliseconds()),
+    };
+}
+
+pub fn generateNoWordlist(self: Self, req: Request, printer: Printer) ![]const u8 {
+    printer.detail("> length: {}, disable numbers: {}, disable symbols: {}, disable uppercase letters: {}\n", .{
+        req.length,
+        req.no_numbers,
+        req.no_special_symb,
+        req.no_upper,
+    });
+
+    const alphabet = try req.alphabet(self.allocator);
+    defer self.allocator.free(alphabet);
+    printer.detail("> generated alphabet: {s}\n", .{alphabet});
+
+    var rng = std.Random.DefaultPrng.init(self.seed);
     const rnd = rng.random();
-    var pwd = try allocator.alloc(u8, req.length);
+    var pwd = try self.allocator.alloc(u8, req.length);
 
     for (0..req.length) |i| {
         const idx = rnd.uintLessThan(usize, alphabet.len);
@@ -27,26 +40,24 @@ pub fn generateNoWordlist(req: Request, printer: Printer, allocator: std.mem.All
     return pwd;
 }
 
-pub fn generateWordlist(req: Request, wordlist_path: []const u8, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
-    if (req.verbose) {
-        printer.detail("> length: {}, disable numbers: {}, disable symbols: {}, disable uppercase letters: {}\n", .{
-            req.length,
-            req.no_numbers,
-            req.no_special_symb,
-            req.no_upper,
-        });
-        printer.detail("> wordlist path: {s}\n", .{wordlist_path});
-    }
-    const st1_seed: u64 = @bitCast(std.time.milliTimestamp());
-    var rng = std.Random.DefaultPrng.init(st1_seed);
+pub fn generateWordlist(self: Self, req: Request, wordlist_path: []const u8, printer: Printer) ![]const u8 {
+    printer.detail("> length: {}, disable numbers: {}, disable symbols: {}, disable uppercase letters: {}\n", .{
+        req.length,
+        req.no_numbers,
+        req.no_special_symb,
+        req.no_upper,
+    });
+    printer.detail("> wordlist path: {s}\n", .{wordlist_path});
+
+    var rng = std.Random.DefaultPrng.init(self.seed);
     const rnd = rng.random();
     const word_idx = rnd.uintLessThan(u64, std.math.maxInt(u64));
-    if (req.verbose) printer.detail("> generated word_idx: {}\n", .{word_idx});
+    printer.detail("> generated word_idx: {}\n", .{word_idx});
 
-    const word = try pickWord(wordlist_path, word_idx, req.verbose, printer, allocator);
-    defer allocator.free(word);
+    const word = try self.pickWord(wordlist_path, word_idx, req.verbose, printer);
+    defer self.allocator.free(word);
 
-    return try mangleWord(word, req, rnd, printer, allocator);
+    return try mangleWord(word, req, rnd, printer, self.allocator);
 }
 
 fn mangleWord(word: []const u8, req: Request, rnd: std.Random, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
@@ -55,7 +66,7 @@ fn mangleWord(word: []const u8, req: Request, rnd: std.Random, printer: Printer,
 
     if (word.len >= req.length) {
         @memcpy(res, word[0..req.length]);
-        if (req.verbose) printer.detail("> picked word is too long and will be truncated\n", .{});
+        printer.detail("> picked word is too long and will be truncated\n", .{});
         replaceSymbols(res, req, rnd);
         return res;
     }
@@ -63,13 +74,14 @@ fn mangleWord(word: []const u8, req: Request, rnd: std.Random, printer: Printer,
     const len_diff = req.length - word.len;
     const pfx_len = len_diff / 2;
     const sfx_len = len_diff - pfx_len;
-    if (req.verbose) printer.detail("> generated prefix length: {}, generated suffix length: {}\n", .{
+    printer.detail("> generated prefix length: {}, generated suffix length: {}\n", .{
         pfx_len,
         sfx_len,
     });
 
-    const alphabet = try req.alphabet(printer, allocator);
+    const alphabet = try req.alphabet(allocator);
     defer allocator.free(alphabet);
+    printer.detail("> generated alphabet: {s}\n", .{alphabet});
 
     for (0..pfx_len) |i| {
         const idx = rnd.uintLessThan(usize, alphabet.len);
@@ -97,23 +109,24 @@ fn replaceSymbols(str: []u8, req: Request, rnd: std.Random) void {
     }
 }
 
-fn pickWord(wordlist_path: []const u8, word_idx: u64, verbose: bool, printer: Printer, allocator: std.mem.Allocator) ![]const u8 {
+fn pickWord(self: Self, wordlist_path: []const u8, word_idx: u64, verbose: bool, printer: Printer) ![]const u8 {
     if (verbose) {
-        var arena = std.heap.ArenaAllocator.init(allocator);
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
         const alloc = arena.allocator();
         printer.detail("> cwd path: {s}\n", .{
-            try std.fs.cwd().realpathAlloc(alloc, "."),
+            try std.Io.Dir.cwd().realPathFileAlloc(self.io, ".", alloc),
         });
     }
 
-    const file = try std.fs.cwd().openFile(wordlist_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(self.io, wordlist_path, .{});
+    defer file.close(self.io);
     var idx = word_idx + 1;
 
-    const buf = try file.readToEndAlloc(allocator, 500_000_000);
-    defer allocator.free(buf);
+    var reader = file.reader(self.io, &.{});
+    const buf = try reader.interface.allocRemaining(self.allocator, .limited(500_000_000));
+    defer self.allocator.free(buf);
 
     while (true) {
         var words_count: u64 = 0;
@@ -122,23 +135,25 @@ fn pickWord(wordlist_path: []const u8, word_idx: u64, verbose: bool, printer: Pr
         while (iter.next()) |w| {
             words_count += 1;
             if (idx == words_count) {
-                const res = try allocator.alloc(u8, w.len);
+                const res = try self.allocator.alloc(u8, w.len);
                 @memcpy(res, w);
-                if (verbose) printer.detail("> picked word: {s}\n", .{w});
+                printer.detail("> picked word: {s}\n", .{w});
                 return res;
             }
         }
 
         idx = idx % words_count;
-        if (verbose) printer.detail("> word_idx adjusted to {}\n", .{idx});
+        printer.detail("> word_idx adjusted to {}\n", .{idx});
     }
 }
 
 test "can pick a word from a list" {
     const idx: u64 = 14344392;
     const path = "test_wordlist.txt";
+    const testing = std.testing;
+    const gen = Self.init(testing.io, testing.allocator);
 
-    const word = try pickWord(path, idx, false, Printer.init(), std.testing.allocator);
+    const word = try gen.pickWord(path, idx, false, Printer.init(testing.io, false));
     defer std.testing.allocator.free(word);
 
     try std.testing.expectEqualStrings("1234567", word);
